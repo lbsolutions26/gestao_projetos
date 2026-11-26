@@ -122,6 +122,22 @@ create table if not exists public.projeto_convites (
 
 create index if not exists projeto_convites_email_idx on public.projeto_convites (email);
 
+create table if not exists public.tags (
+  id bigint generated always as identity primary key,
+  dono uuid not null references auth.users (id) on delete cascade,
+  nome text not null check (char_length(nome) between 1 and 40),
+  cor text not null default '#5c6bc0',
+  criado_em timestamptz not null default now()
+);
+
+create unique index if not exists tags_dono_nome_uidx on public.tags (dono, lower(nome));
+
+create table if not exists public.projeto_tags (
+  projeto_id bigint not null references public.projetos (id) on delete cascade,
+  tag_id bigint not null references public.tags (id) on delete cascade,
+  primary key (projeto_id, tag_id)
+);
+
 create table if not exists public.avisos (
   id bigint generated always as identity primary key,
   destinatario text not null,
@@ -752,6 +768,22 @@ create policy convites_ler on public.projeto_convites for select to authenticate
   );
 
 alter table public.projeto_convites enable row level security;
+alter table public.tags enable row level security;
+alter table public.projeto_tags enable row level security;
+
+drop policy if exists tags_minhas on public.tags;
+create policy tags_minhas on public.tags for all to authenticated
+  using (dono = auth.uid()) with check (dono = auth.uid());
+drop policy if exists projeto_tags_minhas on public.projeto_tags;
+create policy projeto_tags_minhas on public.projeto_tags for all to authenticated
+  using (
+    public.membro_do_projeto(projeto_id)
+    and exists (select 1 from public.tags t where t.id = tag_id and t.dono = auth.uid())
+  )
+  with check (
+    public.membro_do_projeto(projeto_id)
+    and exists (select 1 from public.tags t where t.id = tag_id and t.dono = auth.uid())
+  );
 
 drop policy if exists comentarios_ler on public.projeto_comentarios;
 create policy comentarios_ler on public.projeto_comentarios for select to authenticated
@@ -784,7 +816,7 @@ grant usage on schema public to authenticated;
 grant select, insert, update, delete on
   public.perfis, public.projetos, public.projeto_acoes, public.projeto_equipe,
   public.projeto_registros, public.projeto_entregaveis, public.projeto_comentarios,
-  public.projeto_modelos, public.avisos
+  public.projeto_modelos, public.avisos, public.tags, public.projeto_tags
 to authenticated;
 grant select on public.projeto_convites to authenticated;
 revoke insert, update, delete on public.projeto_convites from authenticated, anon;
@@ -792,7 +824,8 @@ grant usage, select on all sequences in schema public to authenticated;
 revoke all on
   public.perfis, public.projetos, public.projeto_acoes, public.projeto_equipe,
   public.projeto_registros, public.projeto_entregaveis, public.projeto_comentarios,
-  public.projeto_modelos, public.avisos, public.projeto_convites
+  public.projeto_modelos, public.avisos, public.projeto_convites,
+  public.tags, public.projeto_tags
 from anon;
 
 insert into storage.buckets (id, name, public, file_size_limit)

@@ -144,8 +144,36 @@
       }).map(mapRegistro),
       entregaveis: (row.entregaveis || []).slice().sort(porOrdem).map(mapEntregavel),
       comentarios,
+      tags: Array.isArray(row.tags) ? row.tags : [],
       modelo: temModelo,
     };
+  }
+
+  async function lerTags() {
+    if (!sb) return { tags: [], ligacoes: [] };
+    const tags = await sb.from("tags").select("id, nome, cor").order("nome");
+    const ligacoes = await sb.from("projeto_tags").select("projeto_id, tag_id");
+    return {
+      tags: tags.error ? [] : (tags.data || []),
+      ligacoes: ligacoes.error ? [] : (ligacoes.data || []),
+    };
+  }
+
+  function aplicarTags(lista, catalogo) {
+    const porId = new Map((catalogo.tags || []).map((t) => [Number(t.id), {
+      id: Number(t.id),
+      nome: t.nome || "",
+      cor: t.cor || "#5c6bc0",
+    }]));
+    const porProjeto = new Map();
+    for (const liga of catalogo.ligacoes || []) {
+      const tag = porId.get(Number(liga.tag_id));
+      if (!tag) continue;
+      const pid = Number(liga.projeto_id);
+      if (!porProjeto.has(pid)) porProjeto.set(pid, []);
+      porProjeto.get(pid).push(tag);
+    }
+    return (lista || []).map((p) => ({ ...p, tags: porProjeto.get(Number(p.id)) || [] }));
   }
 
   function mapTemplate(row) {
@@ -181,14 +209,47 @@
   async function listarProjetos() {
     const res = await sb.from("projetos").select(SELECT_PROJETO).order("ordem", { ascending: true });
     exigir(res);
-    return (res.data || []).map(mapProjeto);
+    const catalogo = await lerTags();
+    return aplicarTags((res.data || []).map(mapProjeto), catalogo);
   }
 
   async function buscarProjeto(id) {
     const res = await sb.from("projetos").select(SELECT_PROJETO).eq("id", id).maybeSingle();
     exigir(res);
     if (!res.data) throw new Error("Projeto não encontrado.");
-    return mapProjeto(res.data);
+    const catalogo = await lerTags();
+    return aplicarTags([mapProjeto(res.data)], catalogo)[0];
+  }
+
+  async function listarTags() {
+    const catalogo = await lerTags();
+    return catalogo.tags.map((t) => ({ id: Number(t.id), nome: t.nome || "", cor: t.cor || "#5c6bc0" }));
+  }
+
+  async function criarTag(nome, cor) {
+    if (!eu.id) throw new Error("Entre de novo para criar a tag.");
+    const res = await sb.from("tags").insert({
+      dono: eu.id,
+      nome: String(nome || "").trim().slice(0, 40),
+      cor: cor || "#5c6bc0",
+    }).select("id, nome, cor").single();
+    exigir(res);
+    return { id: Number(res.data.id), nome: res.data.nome, cor: res.data.cor || "#5c6bc0" };
+  }
+
+  async function marcarTag(projetoId, tagId) {
+    const res = await sb.from("projeto_tags").insert({ projeto_id: Number(projetoId), tag_id: Number(tagId) });
+    if (res.error && !/duplicate|already exists|23505/i.test(String(res.error.message || res.error.code || ""))) exigir(res);
+  }
+
+  async function removerTag(projetoId, tagId) {
+    const res = await sb.from("projeto_tags").delete().eq("projeto_id", Number(projetoId)).eq("tag_id", Number(tagId));
+    exigir(res);
+  }
+
+  async function apagarTag(tagId) {
+    const res = await sb.from("tags").delete().eq("id", Number(tagId));
+    exigir(res);
   }
 
   async function listarTemplates() {
@@ -643,6 +704,11 @@
     carregarEu,
     carregarEtapas,
     salvarEtapas,
+    listarTags,
+    criarTag,
+    marcarTag,
+    removerTag,
+    apagarTag,
     listarConvites,
     convidar,
     revogarConvite,

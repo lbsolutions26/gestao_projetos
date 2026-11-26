@@ -19,6 +19,8 @@ drop policy if exists entregaveis_apagar on storage.objects;
 
 -- O bucket entregaveis não sai por SQL. Apague em Armazenamento, no menu do projeto.
 
+drop table if exists public.projeto_tags cascade;
+drop table if exists public.tags cascade;
 drop table if exists public.projeto_convites cascade;
 drop table if exists public.avisos cascade;
 drop table if exists public.projeto_modelos cascade;

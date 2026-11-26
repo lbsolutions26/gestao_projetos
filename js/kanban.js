@@ -16,12 +16,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const tbody = document.getElementById("tbody");
   const busca = document.getElementById("busca");
   const filtroStatus = document.getElementById("filtroStatus");
+  const filtroTag = document.getElementById("filtroTag");
   const modal = document.getElementById("modal");
   const form = document.getElementById("formProjeto");
   const btnExcluir = document.getElementById("btnExcluir");
 
   let projetos = [];
   let minhasEtapas = [];
+  let minhasTags = [];
   let modelos = [];
   let usuariosSgc = [];
   let editandoId = null;
@@ -227,6 +229,54 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function tagsDoAberto() {
+    const projeto = projetos.find((p) => Number(p.id) === Number(editandoId));
+    return projeto && projeto.tags ? projeto.tags : [];
+  }
+
+  function renderTagsProjeto() {
+    const box = document.getElementById("listaTagsProjeto");
+    const trava = document.getElementById("tagTrava");
+    const form = document.getElementById("tagForm");
+    if (!box) return;
+    if (!editandoId) {
+      if (trava) trava.hidden = false;
+      if (form) form.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    if (trava) trava.hidden = true;
+    if (form) form.hidden = false;
+    const marcadas = new Set(tagsDoAberto().map((t) => Number(t.id)));
+    if (!minhasTags.length) {
+      box.innerHTML = `<p class="acao-vazia">Nenhuma tag ainda.</p>`;
+      return;
+    }
+    box.innerHTML = minhasTags.map((t) => {
+      const on = marcadas.has(Number(t.id));
+      return `<button type="button" class="tag-opcao${on ? " on" : ""}" data-tag="${t.id}" style="${on ? `background:${escapeHtml(t.cor)}` : ""}">${escapeHtml(t.nome)}<span class="x" data-tag-apagar="${t.id}" title="Apagar tag" aria-label="Apagar tag ${escapeHtml(t.nome)}">&times;</span></button>`;
+    }).join("");
+  }
+
+  async function alternarTag(tag) {
+    const projeto = projetos.find((p) => Number(p.id) === Number(editandoId));
+    if (!projeto) return;
+    const tem = (projeto.tags || []).some((t) => Number(t.id) === Number(tag.id));
+    if (tem) await window.GestaoDB.removerTag(projeto.id, tag.id);
+    else {
+      if ((projeto.tags || []).length >= 8) {
+        alert("No máximo 8 tags neste projeto.");
+        return;
+      }
+      await window.GestaoDB.marcarTag(projeto.id, tag.id);
+    }
+    projeto.tags = tem
+      ? (projeto.tags || []).filter((t) => Number(t.id) !== Number(tag.id))
+      : (projeto.tags || []).concat([tag]);
+    renderTagsProjeto();
+    render();
+  }
+
   function renderEquipe() {
     const box = document.getElementById("listaEquipe");
     if (!box) return;
@@ -277,18 +327,37 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `<span class="kb-badges">${partes.join("")}</span>`;
   }
 
+  function filtroLigado() {
+    return !!(busca.value.trim() || filtroStatus.value || (filtroTag && filtroTag.value));
+  }
+
   function visiveis() {
     const q = busca.value.trim().toLowerCase();
     const filtro = filtroStatus.value;
+    const tagId = filtroTag ? filtroTag.value : "";
     return projetos.filter((p) => {
       if (filtro && p.status !== filtro) return false;
+      if (tagId && !(p.tags || []).some((t) => String(t.id) === tagId)) return false;
       if (!q) return true;
       const acoesTxt = (p.acoes || []).map((a) => a.texto).join(" ");
       const entTxt = (p.entregaveis || []).map((e) => `${e.nome || ""} ${e.url || ""}`).join(" ");
       const equipeTxt = (p.equipe || []).map((e) => `${e.nome || ""} ${e.usuario || ""}`).join(" ");
       const comTxt = (p.comentarios || []).map((c) => `${c.texto || ""} ${c.autor || ""}`).join(" ");
-      return [p.nome, p.descricao, p.responsavel, p.responsavelUsuario, equipeTxt, acoesTxt, entTxt, comTxt].join(" ").toLowerCase().includes(q);
+      const tagsTxt = (p.tags || []).map((t) => t.nome).join(" ");
+      return [p.nome, p.descricao, p.responsavel, p.responsavelUsuario, equipeTxt, acoesTxt, entTxt, comTxt, tagsTxt].join(" ").toLowerCase().includes(q);
     });
+  }
+
+  function htmlTags(p) {
+    if (!p.tags || !p.tags.length) return "";
+    return `<div class="kb-tags">${p.tags.map((t) => `<span class="tag" style="background:${escapeHtml(t.cor)}">${escapeHtml(t.nome)}</span>`).join("")}</div>`;
+  }
+
+  function renderFiltroTags() {
+    if (!filtroTag) return;
+    const atual = filtroTag.value;
+    filtroTag.innerHTML = `<option value="">Todas as tags</option>${minhasTags.map((t) => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join("")}`;
+    if (minhasTags.some((t) => String(t.id) === atual)) filtroTag.value = atual;
   }
 
   function opcoesStatus(atual) {
@@ -331,6 +400,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <td>
           <button type="button" class="nome-btn" data-edit="${p.id}">${escapeHtml(p.nome)}</button>
           ${htmlBadges({ prioridadeAlta: p.prioridadeAlta, atrasado: estaAtrasado(p) })}
+          ${htmlTags(p)}
           ${p.descricao ? `<div class="muted">${escapeHtml(p.descricao)}</div>` : ""}
           ${(p.entregaveis || []).length ? `<div class="muted"><i class="fa-solid fa-paperclip"></i> ${textoEntregaveis((p.entregaveis || []).length)}</div>` : ""}
           ${(p.comentarios || []).length ? `<div class="muted"><i class="fa-solid fa-comment"></i> ${textoComentarios((p.comentarios || []).length)}</div>` : ""}
@@ -349,7 +419,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!col.recolhida) return true;
     if (colunasAbertas.has(col.id)) return true;
     if (filtroStatus.value === col.id) return true;
-    return !!(busca.value.trim() && qtd);
+    return !!((busca.value.trim() || (filtroTag && filtroTag.value)) && qtd);
   }
 
   function chaveMes(p) {
@@ -373,7 +443,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function mesAberto(chave) {
-    if (filtroStatus.value === "CONCLUIDO" || busca.value.trim()) return true;
+    if (filtroStatus.value === "CONCLUIDO" || busca.value.trim() || (filtroTag && filtroTag.value)) return true;
     return mesesAbertos.has(chave);
   }
 
@@ -386,6 +456,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div class="kb-main">
           <h3><button type="button" class="nome-btn" data-edit="${p.id}">${escapeHtml(p.nome)}</button></h3>
           ${htmlBadges({ prioridadeAlta: p.prioridadeAlta, atrasado: estaAtrasado(p) })}
+          ${htmlTags(p)}
           ${p.descricao ? `<p>${escapeHtml(p.descricao)}</p>` : ""}
           ${htmlAcoes(p)}
           <div class="kb-meta">
@@ -483,6 +554,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       usuario: e.usuario || "",
     }));
     renderEquipe();
+    renderTagsProjeto();
     carregarConvites();
     document.getElementById("campoCadastro").value = projeto ? (projeto.cadastro || "") : hojeIso();
     document.getElementById("campoInicio").value = projeto ? (projeto.inicio || "") : "";
@@ -1195,7 +1267,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function persistirOrdem(layout) {
-    if (busca.value.trim() || filtroStatus.value) {
+    if (filtroLigado()) {
       render();
       return;
     }
@@ -1326,6 +1398,64 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.key !== "Enter") return;
     e.preventDefault();
     sincronizarResponsavel(true);
+  });
+  document.getElementById("btnAddTag").addEventListener("click", async () => {
+    if (!editandoId) {
+      alert("Salve o projeto antes de marcar uma tag.");
+      return;
+    }
+    const campo = document.getElementById("campoTag");
+    const nome = campo.value.trim();
+    if (!nome) {
+      alert("Escreva o nome da tag.");
+      return;
+    }
+    const existe = minhasTags.find((t) => t.nome.toLowerCase() === nome.toLowerCase());
+    if (existe) {
+      campo.value = "";
+      try { await alternarTag(existe); } catch (err) { alert(err.message); }
+      return;
+    }
+    if (minhasTags.length >= 40) {
+      alert("No máximo 40 tags na sua conta.");
+      return;
+    }
+    const cores = ["#5c6bc0", "#00897b", "#ef6c00", "#8e24aa", "#c62828", "#2e7d32", "#0277bd", "#6d4c41"];
+    try {
+      const tag = await window.GestaoDB.criarTag(nome, cores[minhasTags.length % cores.length]);
+      minhasTags.push(tag);
+      minhasTags.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+      renderFiltroTags();
+      campo.value = "";
+      await alternarTag(tag);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  document.getElementById("listaTagsProjeto").addEventListener("click", async (e) => {
+    const apagar = e.target.closest("[data-tag-apagar]");
+    if (apagar) {
+      e.stopPropagation();
+      const tag = minhasTags.find((t) => String(t.id) === apagar.dataset.tagApagar);
+      if (!tag) return;
+      if (!window.confirm(`Apagar a tag ${tag.nome}? Ela sai de todos os seus projetos.`)) return;
+      try {
+        await window.GestaoDB.apagarTag(tag.id);
+        minhasTags = minhasTags.filter((t) => Number(t.id) !== Number(tag.id));
+        projetos.forEach((p) => { p.tags = (p.tags || []).filter((t) => Number(t.id) !== Number(tag.id)); });
+        renderFiltroTags();
+        renderTagsProjeto();
+        render();
+      } catch (err) {
+        alert(err.message);
+      }
+      return;
+    }
+    const botao = e.target.closest("[data-tag]");
+    if (!botao) return;
+    const tag = minhasTags.find((t) => String(t.id) === botao.dataset.tag);
+    if (!tag) return;
+    try { await alternarTag(tag); } catch (err) { alert(err.message); }
   });
   document.getElementById("btnConvidar").addEventListener("click", async () => {
     if (!editandoId) {
@@ -1687,10 +1817,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   busca.addEventListener("input", () => render());
   filtroStatus.addEventListener("change", () => render());
+  if (filtroTag) filtroTag.addEventListener("change", () => render());
 
   board.addEventListener("dragstart", (e) => {
     const handle = e.target.closest(".kb-handle");
-    if (!handle || busca.value.trim() || filtroStatus.value) {
+    if (!handle || filtroLigado()) {
       e.preventDefault();
       return;
     }
@@ -1862,6 +1993,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     modelos = mods.templates || [];
     usuariosSgc = pessoas.usuarios || [];
     minhasEtapas = await window.GestaoDB.carregarEtapas();
+    minhasTags = await window.GestaoDB.listarTags();
+    renderFiltroTags();
     publicarEtapas();
     preencherUsuarios();
     render();

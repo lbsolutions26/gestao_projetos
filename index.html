@@ -216,6 +216,10 @@
     .marca-projeto { display: flex; flex-wrap: wrap; gap: 8px 16px; }
     .marca-projeto label { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; font-weight: 600; }
     .marca-projeto input { width: 16px; height: 16px; padding: 0; }
+    .tag { display: inline-block; margin: 0 6px 6px 0; padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 12px; }
+    .tag-opcao { border: 1px solid #cfd8dc; background: #fff; color: #263238; border-radius: 999px; padding: 4px 10px; margin: 0 6px 6px 0; cursor: pointer; }
+    .tag-opcao.on { color: #fff; border-color: transparent; }
+    .tag-opcao .x { margin-left: 6px; border: 0; background: transparent; color: inherit; cursor: pointer; }
     .convite-item { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
     .convite-item .estado { color: #546e7a; font-size: 0.85rem; }
     .equipe-add { display: flex; gap: 8px; align-items: center; }
@@ -500,6 +504,9 @@
 
       <div class="toolbar no-print">
         <input type="search" id="busca" placeholder="Buscar nome, descrição ou responsável" />
+        <select id="filtroTag" aria-label="Filtrar tag">
+          <option value="">Todas as tags</option>
+        </select>
         <select id="filtroStatus" aria-label="Filtrar status">
           <option value="">Todos os status</option>
           <option value="A FAZER">A fazer</option>
@@ -577,6 +584,14 @@
       <div class="modal-panel active" id="panelProjeto">
       <label for="campoNome">Nome</label>
       <input id="campoNome" maxlength="160" />
+      <label for="campoTag">Tags</label>
+      <p class="hint">Suas tags, só nesta conta. Sirva para separar empresa, faculdade e família. O filtro da tela principal usa estas tags.</p>
+      <p class="hint" id="tagTrava" hidden>Salve o projeto antes de marcar uma tag.</p>
+      <div id="listaTagsProjeto"></div>
+      <div class="equipe-add" id="tagForm">
+        <input id="campoTag" maxlength="40" placeholder="Nova tag, ex.: Faculdade" autocomplete="off" />
+        <button type="button" class="btn" id="btnAddTag">Criar e marcar</button>
+      </div>
       <label for="campoDesc">Descrição</label>
       <textarea id="campoDesc" rows="6" maxlength="1000"></textarea>
       <label for="campoResp">Responsável</label>
@@ -681,8 +696,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="js/cronologia.js?v=20261126etapas"></script>
-  <script src="js/db.js?v=20261126convite"></script>
+  <script src="js/db.js?v=20261126tags"></script>
   <script src="js/sessao.js?v=20261126convite"></script>
-  <script src="js/kanban.js?v=20261126convite"></script>
+  <script src="js/kanban.js?v=20261126tags"></script>
 </body>
 </html>
