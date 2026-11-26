@@ -524,6 +524,44 @@
     return res.data;
   }
 
+  function normalizarEtapas(bruto) {
+    const lista = Array.isArray(bruto) ? bruto : [];
+    const vistas = new Set();
+    const saida = [];
+    for (const item of lista) {
+      const nome = String((item && item.nome) || "").trim().slice(0, 80);
+      const id = String((item && item.id) || "").replace(/[^a-z0-9]/gi, "").slice(0, 20);
+      const cor = String((item && item.cor) || "").toLowerCase();
+      const chave = nome.toLowerCase();
+      if (!nome || !id || vistas.has(chave)) continue;
+      vistas.add(chave);
+      saida.push({ id, nome, cor: /^#[0-9a-f]{6}$/.test(cor) ? cor : "#607d8b" });
+      if (saida.length >= 24) break;
+    }
+    return saida;
+  }
+
+  async function carregarEtapas() {
+    if (!sb || !eu.id) return [];
+    const res = await sb.from("perfis").select("etapas").eq("id", eu.id).maybeSingle();
+    if (res.error) return [];
+    return normalizarEtapas(res.data && res.data.etapas);
+  }
+
+  async function salvarEtapas(lista) {
+    if (!sb || !eu.id) throw new Error("Entre de novo para gravar a etapa.");
+    const etapas = normalizarEtapas(lista);
+    const res = await sb.from("perfis").update({ etapas }).eq("id", eu.id);
+    if (res.error) {
+      const bruto = String(res.error.message || "");
+      if (/etapas|schema cache|column/i.test(bruto)) {
+        throw new Error("Falta a coluna das etapas. No SQL Editor, rode: alter table public.perfis add column if not exists etapas jsonb not null default '[]'::jsonb;");
+      }
+      throw falha(res.error);
+    }
+    return etapas;
+  }
+
   async function carregarEu() {
     const sessao = await sb.auth.getUser();
     const user = sessao.data && sessao.data.user;
@@ -560,5 +598,7 @@
     chamar,
     baixarEntregavel,
     carregarEu,
+    carregarEtapas,
+    salvarEtapas,
   };
 })(window);

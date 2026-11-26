@@ -7,8 +7,11 @@ create table if not exists public.perfis (
   id uuid primary key references auth.users (id) on delete cascade,
   nome text not null,
   usuario text not null unique,
+  etapas jsonb not null default '[]'::jsonb,
   criado_em timestamptz not null default now()
 );
+
+alter table public.perfis add column if not exists etapas jsonb not null default '[]'::jsonb;
 
 create table if not exists public.projetos (
   id bigint generated always as identity primary key,

@@ -1,5 +1,5 @@
 (function (root) {
-  const ETAPAS = [
+  const CONHECIDAS = [
     { id: "pesquisa", nome: "Pesquisa", cor: "#78909c" },
     { id: "faca", nome: "Faca / estrutural", cor: "#fb8c00" },
     { id: "modelagem", nome: "Modelagem 3D", cor: "#8e24aa" },
@@ -8,7 +8,14 @@
     { id: "grafica", nome: "Gráfica / orçamento", cor: "#00897b" },
     { id: "outro", nome: "Outra", cor: "#607d8b" },
   ];
-  const POR_ID = Object.fromEntries(ETAPAS.map((e) => [e.id, e]));
+  const ETAPAS = [
+    CONHECIDAS[0],
+    CONHECIDAS[3],
+    CONHECIDAS[5],
+    CONHECIDAS[6],
+  ];
+  let extras = [];
+  const POR_ID = Object.fromEntries(CONHECIDAS.map((e) => [e.id, e]));
   const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
   const LETRA = ["D", "S", "T", "Q", "Q", "S", "S"];
 
@@ -205,7 +212,7 @@
         titulo: "Fechamento interno até orçamento recebido",
         texto: celulaPar(fechamento, orcamento, (r) => `Fechamento em ${fmtDia(r.data)}; orçamento ainda não registrado`),
       },
-    ];
+    ].filter((item) => item.texto !== "—");
   }
 
   function diasNoMes(ym) {
@@ -250,7 +257,7 @@
   }
 
   function htmlLegenda() {
-    const itens = ETAPAS.filter((e) => e.id !== "outro");
+    const itens = ETAPAS.filter((e) => e.id !== "outro").concat(extras);
     return itens.map((e) => `<span><i style="background:${e.cor}"></i> ${escapeHtml(e.nome)}</span>`).join("");
   }
 
@@ -404,7 +411,7 @@
         <div class="crono-legenda">${htmlLegenda()}</div>
         ${htmlGantt(rel)}
         <h2>Linha do tempo por projeto</h2>
-        <p class="crono-lead">O intervalo entre as etapas conta dias corridos e dias úteis. Em vermelho, o tempo da faca até a arte e, quando houver, do 3D até a arte.</p>
+        <p class="crono-lead">O intervalo entre as etapas conta dias corridos e dias úteis.</p>
         <div class="crono-legenda">${htmlLegenda()}</div>
         ${rel.linhas.map(htmlProduto).join("")}
         ${htmlResumo(rel)}
@@ -412,8 +419,13 @@
       </article>`;
   }
 
+  function definirExtras(lista) {
+    extras = Array.isArray(lista) ? lista.filter((e) => e && e.nome && e.cor) : [];
+  }
+
   root.SGCCronologia = {
     ETAPAS,
+    definirExtras,
     diffDias,
     diasUteis,
     intervalo,

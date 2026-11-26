@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const btnExcluir = document.getElementById("btnExcluir");
 
   let projetos = [];
+  let minhasEtapas = [];
   let modelos = [];
   let usuariosSgc = [];
   let editandoId = null;
@@ -607,25 +608,72 @@ document.addEventListener("DOMContentLoaded", async () => {
     return window.SGCCronologia ? window.SGCCronologia.ETAPAS : [];
   }
 
+  function publicarEtapas() {
+    if (window.SGCCronologia && window.SGCCronologia.definirExtras) {
+      window.SGCCronologia.definirExtras(minhasEtapas);
+    }
+  }
+
   function termoIdDoTexto(texto) {
     const nome = String(texto || "").trim().toLowerCase();
     if (!nome) return "";
     const etapa = etapasAcao().find((e) => e.id !== "outro" && e.nome.toLowerCase() === nome);
-    return etapa ? etapa.id : "";
+    if (etapa) return etapa.id;
+    const minha = minhasEtapas.find((e) => e.nome.toLowerCase() === nome);
+    return minha ? `c:${minha.id}` : "";
+  }
+
+  function opcaoEtapa(e, selecionada) {
+    return `<option value="${escapeHtml(e.id)}" ${e.id === selecionada ? "selected" : ""}>${escapeHtml(e.nome)}</option>`;
   }
 
   function opcoesTermo(texto) {
     const atual = termoIdDoTexto(texto);
     const livre = `<option value="" ${atual ? "" : "selected"}>Texto livre</option>`;
-    const etapas = etapasAcao().map((e) => (
-      `<option value="${e.id}" ${e.id === atual ? "selected" : ""}>${escapeHtml(e.nome)}</option>`
-    )).join("");
-    return livre + etapas;
+    const padrao = etapasAcao().filter((e) => e.id !== "outro").map((e) => opcaoEtapa(e, atual)).join("");
+    const minhas = minhasEtapas.map((e) => opcaoEtapa({ id: `c:${e.id}`, nome: e.nome }, atual)).join("");
+    const outra = etapasAcao().filter((e) => e.id === "outro").map((e) => opcaoEtapa(e, atual)).join("");
+    return `${livre}${padrao}${minhas}${outra}<option value="__nova__">Criar etapa...</option>`;
   }
 
-  function opcoesEtapa(atual) {
-    const etapas = window.SGCCronologia ? window.SGCCronologia.ETAPAS : [];
-    return etapas.map((e) => `<option value="${e.id}" ${e.id === atual ? "selected" : ""}>${escapeHtml(e.nome)}</option>`).join("");
+  function valorEtapaRegistro(r) {
+    if (r.etapa === "outro") {
+      const rotulo = String(r.rotulo || "").trim().toLowerCase();
+      const minha = minhasEtapas.find((e) => e.nome.toLowerCase() === rotulo);
+      if (minha) return `c:${minha.id}`;
+    }
+    return r.etapa || "pesquisa";
+  }
+
+  function opcoesEtapa(registro) {
+    const atual = valorEtapaRegistro(registro);
+    const padrao = etapasAcao().filter((e) => e.id !== "outro").map((e) => opcaoEtapa(e, atual)).join("");
+    const minhas = minhasEtapas.map((e) => opcaoEtapa({ id: `c:${e.id}`, nome: e.nome }, atual)).join("");
+    const outra = etapasAcao().filter((e) => e.id === "outro").map((e) => opcaoEtapa(e, atual)).join("");
+    return `${padrao}${minhas}${outra}<option value="__nova__">Criar etapa...</option>`;
+  }
+
+  async function criarEtapa(nomeBruto) {
+    const nome = String(nomeBruto || "").trim().slice(0, 80);
+    if (!nome) return null;
+    const repetida = etapasAcao().concat(minhasEtapas).some((e) => e.id !== "outro" && e.nome.toLowerCase() === nome.toLowerCase());
+    if (repetida) {
+      alert("Essa etapa já existe.");
+      return null;
+    }
+    if (minhasEtapas.length >= 24) {
+      alert("No máximo 24 etapas da sua conta.");
+      return null;
+    }
+    const cores = ["#fb8c00", "#8e24aa", "#1e88e5", "#d81b60", "#6d4c41", "#5e35b1", "#039be5", "#7cb342"];
+    const item = {
+      id: `c${Date.now().toString(36)}`,
+      nome,
+      cor: cores[minhasEtapas.length % cores.length],
+    };
+    minhasEtapas = await window.GestaoDB.salvarEtapas(minhasEtapas.concat([item]));
+    publicarEtapas();
+    return minhasEtapas.find((e) => e.nome.toLowerCase() === nome.toLowerCase()) || item;
   }
 
   function lerRegistrosForm() {
@@ -637,8 +685,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       const texto = document.querySelector(`#listaRegistros [data-reg-texto="${i}"]`);
       if (!registrosEdit[i]) return;
       if (data) registrosEdit[i].data = data.value;
-      if (etapa) registrosEdit[i].etapa = etapa.value;
-      if (rotulo) registrosEdit[i].rotulo = rotulo.value;
+      if (etapa && etapa.value !== "__nova__") {
+        if (etapa.value.indexOf("c:") === 0) {
+          const minha = minhasEtapas.find((e) => `c:${e.id}` === etapa.value);
+          registrosEdit[i].etapa = "outro";
+          if (minha) {
+            registrosEdit[i].rotulo = minha.nome;
+            registrosEdit[i].cor = minha.cor;
+          }
+        } else {
+          registrosEdit[i].etapa = etapa.value;
+          if (etapa.value !== "outro") registrosEdit[i].rotulo = "";
+        }
+      }
+      if (rotulo && !(etapa && etapa.value.indexOf("c:") === 0)) registrosEdit[i].rotulo = rotulo.value;
       if (titulo) registrosEdit[i].titulo = titulo.value;
       if (texto) registrosEdit[i].texto = texto.value;
     });
@@ -655,7 +715,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     box.innerHTML = registrosEdit.map((r, i) => `
       <div class="reg-card">
         <input type="date" data-reg-data="${i}" value="${escapeHtml(r.data)}" aria-label="Data do registro ${i + 1}" />
-        <select data-reg-etapa="${i}" aria-label="Etapa do registro ${i + 1}">${opcoesEtapa(r.etapa)}</select>
+        <select data-reg-etapa="${i}" aria-label="Etapa do registro ${i + 1}">${opcoesEtapa(r)}</select>
         <button type="button" class="ico" data-reg-remover="${i}" title="Remover registro" aria-label="Remover registro">
           <i class="fa-solid fa-xmark"></i>
         </button>
@@ -1155,10 +1215,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (foco) foco.focus();
   });
   document.getElementById("listaRegistros").addEventListener("input", () => lerRegistrosForm());
-  document.getElementById("listaRegistros").addEventListener("change", (e) => {
+  document.getElementById("listaRegistros").addEventListener("change", async (e) => {
     if (!e.target.matches("[data-reg-etapa]")) return;
-    lerRegistrosForm();
     const i = Number(e.target.dataset.regEtapa);
+    if (e.target.value === "__nova__") {
+      const nome = window.prompt("Nome da etapa desta conta");
+      if (nome && registrosEdit[i]) {
+        try {
+          const criada = await criarEtapa(nome);
+          if (criada) {
+            registrosEdit[i].etapa = "outro";
+            registrosEdit[i].rotulo = criada.nome;
+            registrosEdit[i].cor = criada.cor;
+          }
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+      renderRegistrosEditor();
+      return;
+    }
+    lerRegistrosForm();
     if (registrosEdit[i] && registrosEdit[i].etapa === "outro" && !registrosEdit[i].cor) {
       registrosEdit[i].cor = "#607d8b";
     }
@@ -1226,13 +1303,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     const i = Number(texto.dataset.texto);
     if (acoesEdit[i]) acoesEdit[i].texto = texto.value;
   });
-  document.getElementById("listaAcoes").addEventListener("change", (e) => {
+  document.getElementById("listaAcoes").addEventListener("change", async (e) => {
     const termo = e.target.closest("[data-termo]");
     if (termo) {
       const i = Number(termo.dataset.termo);
       const acao = acoesEdit[i];
       const input = document.querySelector(`#listaAcoes [data-texto="${i}"]`);
       if (!acao || !input) return;
+      if (termo.value === "__nova__") {
+        const nome = window.prompt("Nome da etapa desta conta");
+        if (nome) {
+          try {
+            const criada = await criarEtapa(nome);
+            if (criada) acao.texto = criada.nome;
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+        renderAcoesEditor();
+        return;
+      }
+      if (termo.value.indexOf("c:") === 0) {
+        const minha = minhasEtapas.find((item) => `c:${item.id}` === termo.value);
+        if (minha) {
+          acao.texto = minha.nome;
+          input.value = minha.nome;
+          input.readOnly = true;
+        }
+        return;
+      }
       const etapa = etapasAcao().find((item) => item.id === termo.value);
       if (etapa && etapa.id !== "outro") {
         acao.texto = etapa.nome;
@@ -1669,6 +1768,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     projetos = data.projetos || [];
     modelos = mods.templates || [];
     usuariosSgc = pessoas.usuarios || [];
+    minhasEtapas = await window.GestaoDB.carregarEtapas();
+    publicarEtapas();
     preencherUsuarios();
     render();
     const aberto = Number(new URLSearchParams(location.search).get("projeto"));

@@ -618,7 +618,7 @@
           <label>Ações</label>
           <button type="button" class="btn" id="btnAddAcao"><i class="fa-solid fa-plus"></i> Adicionar ação</button>
         </div>
-        <p class="hint">Checklist em níveis. A seta da direita desce um nível (até o 3) e a da esquerda sobe. Alta e Atrasado marcam a ação, separado das datas do projeto. A lista usa os mesmos termos da cronologia. Texto livre deixa escrever a ação. O ícone de cópia duplica uma ação para editar.</p>
+        <p class="hint">Checklist em níveis. A seta da direita desce um nível (até o 3) e a da esquerda sobe. Alta e Atrasado marcam a ação, separado das datas do projeto. A lista começa com Pesquisa, Criação de arte, Gráfica / orçamento e Outra. Criar etapa grava um nome só desta conta. Texto livre deixa escrever a ação. O ícone de cópia duplica uma ação para editar.</p>
         <div id="listaAcoes"></div>
       </div>
       <div class="acoes-editor">
@@ -626,7 +626,7 @@
           <label>Registros da cronologia</label>
           <button type="button" class="btn" id="btnAddRegistro"><i class="fa-solid fa-plus"></i> Adicionar registro</button>
         </div>
-        <p class="hint">Etapa com data. A aba Cronologia desenha o mês a partir daqui. Outra serve para um nome que não está na lista.</p>
+        <p class="hint">Etapa com data. A aba Cronologia desenha o mês a partir daqui. As etapas desta conta aparecem na lista. Outra serve para um nome que não está na lista.</p>
         <div id="listaRegistros"></div>
       </div>
       </div>
@@ -670,9 +670,9 @@
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script src="js/cronologia.js"></script>
-  <script src="js/db.js"></script>
+  <script src="js/cronologia.js?v=20261126etapas"></script>
+  <script src="js/db.js?v=20261126etapas"></script>
   <script src="js/sessao.js"></script>
-  <script src="js/kanban.js"></script>
+  <script src="js/kanban.js?v=20261126etapas"></script>
 </body>
 </html>
