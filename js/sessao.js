@@ -18,6 +18,17 @@
     `;
   }
 
+  async function mostrarConvite(token) {
+    const info = await window.GestaoDB.verConvite(token);
+    if (!info || !info.email) return;
+    const intro = document.querySelector("#formLogin p");
+    const email = document.getElementById("loginEmail");
+    if (intro) {
+      intro.textContent = `Convite para o projeto ${info.projeto}. Entre ou crie a conta com ${info.email}.`;
+    }
+    if (email && !email.value) email.value = info.email;
+  }
+
   async function esperarLogin() {
     const form = document.getElementById("formLogin");
     const criar = document.getElementById("btnCriarConta");
@@ -146,10 +157,23 @@
       auth: { persistSession: true, autoRefreshToken: true },
     });
     window.GestaoDB.usar(sb);
+    const conviteToken = new URLSearchParams(location.search).get("convite");
     let sessao = await sb.auth.getSession();
     if (!sessao.data.session) {
+      if (conviteToken) await mostrarConvite(conviteToken);
       const entrou = await esperarLogin();
       if (!entrou) return false;
+    }
+    if (conviteToken) {
+      try {
+        const aceite = await window.GestaoDB.aceitarConvite(conviteToken);
+        if (aceite && aceite.projetoId) sessionStorage.setItem("gestaoConviteProjeto", String(aceite.projetoId));
+      } catch (err) {
+        alert(err.message || "Não foi possível aceitar o convite.");
+      }
+      history.replaceState({}, "", location.pathname);
+    } else {
+      await window.GestaoDB.aceitarPendentes();
     }
     let perfil = null;
     for (let i = 0; i < 5; i += 1) {

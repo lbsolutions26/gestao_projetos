@@ -216,6 +216,8 @@
     .marca-projeto { display: flex; flex-wrap: wrap; gap: 8px 16px; }
     .marca-projeto label { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; font-weight: 600; }
     .marca-projeto input { width: 16px; height: 16px; padding: 0; }
+    .convite-item { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+    .convite-item .estado { color: #546e7a; font-size: 0.85rem; }
     .equipe-add { display: flex; gap: 8px; align-items: center; }
     .equipe-add input { flex: 1 1 180px; width: auto; min-width: 0; }
     .equipe-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -588,6 +590,14 @@
         <datalist id="listaUsuariosSgc"></datalist>
         <button type="button" class="btn" id="btnAddEquipe">Adicionar</button>
       </div>
+      <label for="campoConvite">Convidar para este projeto</label>
+      <p class="hint">Informe o e-mail. Se a pessoa já tiver conta, o projeto aparece no quadro dela. Se não tiver, copie o link e envie para ela se cadastrar com esse e-mail.</p>
+      <p class="hint" id="conviteTrava" hidden>Salve o projeto antes de convidar.</p>
+      <div id="listaConvites"></div>
+      <div class="equipe-add" id="conviteForm">
+        <input id="campoConvite" type="email" maxlength="200" placeholder="e-mail@empresa.com" autocomplete="off" />
+        <button type="button" class="btn" id="btnConvidar">Convidar</button>
+      </div>
       <div class="datas-projeto">
         <div>
           <label for="campoCadastro">Data de cadastro</label>
@@ -671,8 +681,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="js/cronologia.js?v=20261126etapas"></script>
-  <script src="js/db.js?v=20261126etapas"></script>
-  <script src="js/sessao.js"></script>
-  <script src="js/kanban.js?v=20261126etapas"></script>
+  <script src="js/db.js?v=20261126convite"></script>
+  <script src="js/sessao.js?v=20261126convite"></script>
+  <script src="js/kanban.js?v=20261126convite"></script>
 </body>
 </html>

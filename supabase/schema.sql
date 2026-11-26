@@ -28,9 +28,12 @@ create table if not exists public.projetos (
   ordem integer not null default 0,
   criado_em timestamptz not null default now(),
   criado_por text,
+  criado_por_id uuid references auth.users (id),
   atualizado_em timestamptz,
   constraint projetos_status_ck check (status in ('A FAZER', 'EM ANDAMENTO', 'CONCLUIDO', 'PAUSADO', 'CANCELADO'))
 );
+
+alter table public.projetos add column if not exists criado_por_id uuid references auth.users (id);
 
 create index if not exists projetos_status_idx on public.projetos (status, ordem, id);
 
@@ -106,6 +109,19 @@ create table if not exists public.projeto_modelos (
   criado_por text
 );
 
+create table if not exists public.projeto_convites (
+  id bigint generated always as identity primary key,
+  projeto_id bigint not null references public.projetos (id) on delete cascade,
+  email text not null check (char_length(email) <= 200),
+  token text not null unique,
+  aceito_em timestamptz,
+  criado_em timestamptz not null default now(),
+  convidado_por text,
+  unique (projeto_id, email)
+);
+
+create index if not exists projeto_convites_email_idx on public.projeto_convites (email);
+
 create table if not exists public.avisos (
   id bigint generated always as identity primary key,
   destinatario text not null,
@@ -157,6 +173,43 @@ drop trigger if exists criar_perfil_ao_cadastrar on auth.users;
 create trigger criar_perfil_ao_cadastrar
   after insert on auth.users
   for each row execute function public.criar_perfil();
+
+create or replace function public.membro_do_projeto(p_id bigint)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.projetos pr
+    left join public.perfis p on p.id = auth.uid()
+    where pr.id = p_id
+      and (
+        pr.criado_por_id is null
+        or pr.criado_por_id = auth.uid()
+        or lower(coalesce(pr.responsavel_usuario, '')) = lower(coalesce(p.usuario, ''))
+        or lower(coalesce(pr.criado_por, '')) = lower(coalesce(p.usuario, ''))
+        or lower(coalesce(pr.criado_por, '')) = lower(coalesce(p.nome, ''))
+        or exists (
+          select 1 from public.projeto_equipe e
+          where e.projeto_id = pr.id
+            and coalesce(e.usuario, '') <> ''
+            and lower(e.usuario) = lower(coalesce(p.usuario, ''))
+        )
+        or exists (
+          select 1 from public.projeto_convites c
+          where c.projeto_id = pr.id
+            and c.aceito_em is not null
+            and lower(c.email) = lower(coalesce(auth.jwt()->>'email', ''))
+        )
+      )
+  );
+$$;
+
+revoke all on function public.membro_do_projeto(bigint) from public;
+grant execute on function public.membro_do_projeto(bigint) to authenticated;
 
 create or replace function public.salvar_projeto(payload jsonb)
 returns bigint
@@ -265,6 +318,9 @@ begin
   if coalesce(payload->>'id', '') ~ '^[0-9]+$' then
     v_id := (payload->>'id')::bigint;
   end if;
+  if v_id is not null and not public.membro_do_projeto(v_id) then
+    raise exception 'Projeto não encontrado.';
+  end if;
 
   create temporary table if not exists pg_aviso_tmp (
     usuario text primary key,
@@ -276,10 +332,10 @@ begin
     select coalesce(max(ordem), -1) + 1 into v_ordem from public.projetos where status = v_status;
     insert into public.projetos (
       nome, descricao, responsavel, responsavel_usuario, prazo, data_cadastro, data_inicio,
-      status, prioridade_alta, ordem, criado_por
+      status, prioridade_alta, ordem, criado_por, criado_por_id
     ) values (
       v_nome, v_desc, v_resp, v_resp_usuario, v_fim, coalesce(v_cadastro, current_date), v_inicio,
-      v_status, v_pri, v_ordem, v_eu
+      v_status, v_pri, v_ordem, v_eu, v_uid
     ) returning id into v_id;
   else
     select coalesce(responsavel_usuario, '') into v_resp_antigo
@@ -478,6 +534,181 @@ $$;
 revoke all on function public.salvar_projeto(jsonb) from public;
 grant execute on function public.salvar_projeto(jsonb) to authenticated;
 
+create or replace function public.ver_convite(p_token text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object('email', c.email, 'projeto', pr.nome)
+  from public.projeto_convites c
+  join public.projetos pr on pr.id = c.projeto_id
+  where c.token = left(coalesce(p_token, ''), 80)
+  limit 1;
+$$;
+
+revoke all on function public.ver_convite(text) from public;
+grant execute on function public.ver_convite(text) to anon, authenticated;
+
+create or replace function public.convidar_projeto(p_id bigint, p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text;
+  v_token text;
+  v_uid uuid := auth.uid();
+  v_eu text;
+  v_nome text;
+  v_user uuid;
+  v_aceito timestamptz;
+  v_ja_aceito boolean := false;
+  v_qtd integer;
+begin
+  if v_uid is null then
+    raise exception 'Faça login.';
+  end if;
+  if not public.membro_do_projeto(p_id) then
+    raise exception 'Salve o projeto antes de convidar.';
+  end if;
+  v_email := lower(trim(coalesce(p_email, '')));
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or char_length(v_email) > 200 then
+    raise exception 'Informe um e-mail válido.';
+  end if;
+  if v_email = lower(coalesce(auth.jwt()->>'email', '')) then
+    raise exception 'Você já participa deste projeto.';
+  end if;
+  select nome into v_nome from public.projetos where id = p_id;
+  select usuario into v_eu from public.perfis where id = v_uid;
+  select id into v_user from auth.users where lower(email) = v_email limit 1;
+  select token, aceito_em is not null into v_token, v_ja_aceito
+  from public.projeto_convites
+  where projeto_id = p_id and email = v_email;
+  if not found then
+    v_ja_aceito := false;
+    select count(*) into v_qtd from public.projeto_convites where projeto_id = p_id;
+    if v_qtd >= 30 then
+      raise exception 'No máximo 30 convites neste projeto.';
+    end if;
+    v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+    v_aceito := case when v_user is not null then now() else null end;
+    insert into public.projeto_convites (projeto_id, email, token, aceito_em, convidado_por)
+    values (p_id, v_email, v_token, v_aceito, left(coalesce(v_eu, ''), 100));
+  else
+    v_ja_aceito := coalesce(v_ja_aceito, false);
+    v_aceito := case when v_user is not null then now() else null end;
+    update public.projeto_convites
+    set aceito_em = coalesce(aceito_em, v_aceito)
+    where projeto_id = p_id and email = v_email
+    returning aceito_em into v_aceito;
+  end if;
+  if v_user is not null and not v_ja_aceito then
+    insert into public.avisos (destinatario, projeto_id, mensagem, detalhe)
+    select p.usuario, p_id,
+      left('Você foi convidado para o projeto ' || coalesce(v_nome, '') || '.', 500),
+      left('Por ' || coalesce((select nome from public.perfis where id = v_uid), '') || '.', 500)
+    from public.perfis p
+    where p.id = v_user
+      and lower(p.usuario) <> lower(coalesce(v_eu, ''));
+  end if;
+  return jsonb_build_object(
+    'email', v_email,
+    'token', v_token,
+    'cadastrado', v_user is not null,
+    'aceito', v_aceito is not null
+  );
+end;
+$$;
+
+revoke all on function public.convidar_projeto(bigint, text) from public;
+grant execute on function public.convidar_projeto(bigint, text) to authenticated;
+
+create or replace function public.aceitar_convite(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id bigint;
+  v_email text;
+  v_projeto bigint;
+begin
+  if auth.uid() is null then
+    raise exception 'Faça login.';
+  end if;
+  select id, email, projeto_id into v_id, v_email, v_projeto
+  from public.projeto_convites
+  where token = left(coalesce(p_token, ''), 80);
+  if v_id is null then
+    raise exception 'Convite não encontrado.';
+  end if;
+  if lower(v_email) <> lower(coalesce(auth.jwt()->>'email', '')) then
+    raise exception 'Este convite é para outro e-mail.';
+  end if;
+  update public.projeto_convites
+  set aceito_em = coalesce(aceito_em, now())
+  where id = v_id;
+  return jsonb_build_object('projetoId', v_projeto, 'email', v_email);
+end;
+$$;
+
+revoke all on function public.aceitar_convite(text) from public;
+grant execute on function public.aceitar_convite(text) to authenticated;
+
+create or replace function public.aceitar_convites_pendentes()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ids jsonb;
+begin
+  if auth.uid() is null then
+    return '[]'::jsonb;
+  end if;
+  with upd as (
+    update public.projeto_convites
+    set aceito_em = now()
+    where aceito_em is null
+      and lower(email) = lower(coalesce(auth.jwt()->>'email', ''))
+    returning projeto_id
+  )
+  select coalesce(jsonb_agg(projeto_id), '[]'::jsonb) into v_ids from upd;
+  return coalesce(v_ids, '[]'::jsonb);
+end;
+$$;
+
+revoke all on function public.aceitar_convites_pendentes() from public;
+grant execute on function public.aceitar_convites_pendentes() to authenticated;
+
+create or replace function public.revogar_convite(p_convite bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_projeto bigint;
+begin
+  if auth.uid() is null then
+    raise exception 'Faça login.';
+  end if;
+  select projeto_id into v_projeto from public.projeto_convites where id = p_convite;
+  if v_projeto is null or not public.membro_do_projeto(v_projeto) then
+    raise exception 'Convite não encontrado.';
+  end if;
+  delete from public.projeto_convites where id = p_convite;
+end;
+$$;
+
+revoke all on function public.revogar_convite(bigint) from public;
+grant execute on function public.revogar_convite(bigint) to authenticated;
+
 alter table public.perfis enable row level security;
 alter table public.projetos enable row level security;
 alter table public.projeto_acoes enable row level security;
@@ -495,28 +726,48 @@ create policy perfis_atualizar on public.perfis for update to authenticated
   using (id = auth.uid()) with check (id = auth.uid());
 
 drop policy if exists projetos_membros on public.projetos;
-create policy projetos_membros on public.projetos for all to authenticated using (true) with check (true);
+create policy projetos_membros on public.projetos for all to authenticated
+  using (public.membro_do_projeto(id)) with check (public.membro_do_projeto(id));
 drop policy if exists acoes_membros on public.projeto_acoes;
-create policy acoes_membros on public.projeto_acoes for all to authenticated using (true) with check (true);
+create policy acoes_membros on public.projeto_acoes for all to authenticated
+  using (public.membro_do_projeto(projeto_id)) with check (public.membro_do_projeto(projeto_id));
 drop policy if exists equipe_membros on public.projeto_equipe;
-create policy equipe_membros on public.projeto_equipe for all to authenticated using (true) with check (true);
+create policy equipe_membros on public.projeto_equipe for all to authenticated
+  using (public.membro_do_projeto(projeto_id)) with check (public.membro_do_projeto(projeto_id));
 drop policy if exists registros_membros on public.projeto_registros;
-create policy registros_membros on public.projeto_registros for all to authenticated using (true) with check (true);
+create policy registros_membros on public.projeto_registros for all to authenticated
+  using (public.membro_do_projeto(projeto_id)) with check (public.membro_do_projeto(projeto_id));
 drop policy if exists entregaveis_membros on public.projeto_entregaveis;
-create policy entregaveis_membros on public.projeto_entregaveis for all to authenticated using (true) with check (true);
+create policy entregaveis_membros on public.projeto_entregaveis for all to authenticated
+  using (public.membro_do_projeto(projeto_id)) with check (public.membro_do_projeto(projeto_id));
 drop policy if exists modelos_membros on public.projeto_modelos;
-create policy modelos_membros on public.projeto_modelos for all to authenticated using (true) with check (true);
+create policy modelos_membros on public.projeto_modelos for all to authenticated
+  using (projeto_id is null or public.membro_do_projeto(projeto_id))
+  with check (projeto_id is null or public.membro_do_projeto(projeto_id));
+drop policy if exists convites_ler on public.projeto_convites;
+create policy convites_ler on public.projeto_convites for select to authenticated
+  using (
+    public.membro_do_projeto(projeto_id)
+    or lower(email) = lower(coalesce(auth.jwt()->>'email', ''))
+  );
+
+alter table public.projeto_convites enable row level security;
 
 drop policy if exists comentarios_ler on public.projeto_comentarios;
-create policy comentarios_ler on public.projeto_comentarios for select to authenticated using (true);
+create policy comentarios_ler on public.projeto_comentarios for select to authenticated
+  using (public.membro_do_projeto(projeto_id));
 drop policy if exists comentarios_gravar on public.projeto_comentarios;
-create policy comentarios_gravar on public.projeto_comentarios for insert to authenticated with check (true);
+create policy comentarios_gravar on public.projeto_comentarios for insert to authenticated
+  with check (public.membro_do_projeto(projeto_id));
 drop policy if exists comentarios_apagar on public.projeto_comentarios;
 create policy comentarios_apagar on public.projeto_comentarios for delete to authenticated
   using (
-    lower(coalesce(usuario, '')) = (select lower(usuario) from public.perfis where id = auth.uid())
-    or lower(coalesce(criado_por, '')) = (select lower(nome) from public.perfis where id = auth.uid())
-    or lower(coalesce(criado_por, '')) = (select lower(usuario) from public.perfis where id = auth.uid())
+    public.membro_do_projeto(projeto_id)
+    and (
+      lower(coalesce(usuario, '')) = (select lower(usuario) from public.perfis where id = auth.uid())
+      or lower(coalesce(criado_por, '')) = (select lower(nome) from public.perfis where id = auth.uid())
+      or lower(coalesce(criado_por, '')) = (select lower(usuario) from public.perfis where id = auth.uid())
+    )
   );
 
 drop policy if exists avisos_ler on public.avisos;
@@ -535,11 +786,13 @@ grant select, insert, update, delete on
   public.projeto_registros, public.projeto_entregaveis, public.projeto_comentarios,
   public.projeto_modelos, public.avisos
 to authenticated;
+grant select on public.projeto_convites to authenticated;
+revoke insert, update, delete on public.projeto_convites from authenticated, anon;
 grant usage, select on all sequences in schema public to authenticated;
 revoke all on
   public.perfis, public.projetos, public.projeto_acoes, public.projeto_equipe,
   public.projeto_registros, public.projeto_entregaveis, public.projeto_comentarios,
-  public.projeto_modelos, public.avisos
+  public.projeto_modelos, public.avisos, public.projeto_convites
 from anon;
 
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -576,6 +829,19 @@ drop trigger if exists limite_comentarios on public.projeto_comentarios;
 create trigger limite_comentarios
   before insert on public.projeto_comentarios
   for each row execute function public.limite_comentarios();
+
+update public.projetos pr
+set criado_por_id = (
+  select p.id from public.perfis p
+  where lower(coalesce(pr.criado_por, '')) in (lower(p.usuario), lower(p.nome))
+  order by p.criado_em
+  limit 1
+)
+where pr.criado_por_id is null
+  and exists (
+    select 1 from public.perfis p
+    where lower(coalesce(pr.criado_por, '')) in (lower(p.usuario), lower(p.nome))
+  );
 
 do $$
 begin

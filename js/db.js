@@ -574,6 +574,49 @@
     return { id: eu.id, nome: eu.nome, usuario: eu.usuario };
   }
 
+  async function listarConvites(projetoId) {
+    const res = await sb.from("projeto_convites")
+      .select("id, email, token, aceito_em")
+      .eq("projeto_id", Number(projetoId))
+      .order("criado_em", { ascending: true });
+    exigir(res);
+    return (res.data || []).map((c) => ({
+      id: c.id,
+      email: c.email,
+      token: c.token,
+      cadastrado: !!c.aceito_em,
+    }));
+  }
+
+  async function convidar(projetoId, email) {
+    const res = await sb.rpc("convidar_projeto", { p_id: Number(projetoId), p_email: email });
+    exigir(res);
+    return res.data || {};
+  }
+
+  async function revogarConvite(id) {
+    const res = await sb.rpc("revogar_convite", { p_convite: Number(id) });
+    exigir(res);
+  }
+
+  async function verConvite(token) {
+    const res = await sb.rpc("ver_convite", { p_token: token });
+    if (res.error || !res.data) return null;
+    return res.data;
+  }
+
+  async function aceitarConvite(token) {
+    const res = await sb.rpc("aceitar_convite", { p_token: token });
+    exigir(res);
+    return res.data || {};
+  }
+
+  async function aceitarPendentes() {
+    const res = await sb.rpc("aceitar_convites_pendentes");
+    if (res.error) return [];
+    return res.data || [];
+  }
+
   async function chamar(method, acao, opts) {
     const body = (opts && opts.body) || {};
     const query = (opts && opts.query) || {};
@@ -600,5 +643,11 @@
     carregarEu,
     carregarEtapas,
     salvarEtapas,
+    listarConvites,
+    convidar,
+    revogarConvite,
+    verConvite,
+    aceitarConvite,
+    aceitarPendentes,
   };
 })(window);

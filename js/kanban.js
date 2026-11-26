@@ -173,6 +173,60 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function linkConvite(token) {
+    const url = new URL(location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("convite", token);
+    return url.toString();
+  }
+
+  async function copiarTexto(texto) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    } catch (_) {
+      window.prompt("Copie o link do convite:", texto);
+      return false;
+    }
+  }
+
+  function renderConvites(lista) {
+    const box = document.getElementById("listaConvites");
+    if (!box) return;
+    if (!lista.length) {
+      box.innerHTML = `<p class="acao-vazia">Nenhum convite ainda.</p>`;
+      return;
+    }
+    box.innerHTML = lista.map((c) => `
+      <div class="convite-item">
+        <strong>${escapeHtml(c.email)}</strong>
+        <span class="estado">${c.cadastrado ? "Já tem conta. O projeto aparece no quadro dela." : "Aguardando cadastro."}</span>
+        <button type="button" class="btn" data-convite-copiar="${escapeHtml(c.token)}">Copiar link</button>
+        <button type="button" class="ico" data-convite-revogar="${c.id}" aria-label="Retirar convite">&times;</button>
+      </div>
+    `).join("");
+  }
+
+  async function carregarConvites() {
+    const trava = document.getElementById("conviteTrava");
+    const form = document.getElementById("conviteForm");
+    const box = document.getElementById("listaConvites");
+    if (!editandoId) {
+      if (trava) trava.hidden = false;
+      if (form) form.hidden = true;
+      if (box) box.innerHTML = "";
+      return;
+    }
+    if (trava) trava.hidden = true;
+    if (form) form.hidden = false;
+    try {
+      renderConvites(await window.GestaoDB.listarConvites(editandoId));
+    } catch (err) {
+      if (box) box.innerHTML = `<p class="acao-vazia">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   function renderEquipe() {
     const box = document.getElementById("listaEquipe");
     if (!box) return;
@@ -429,6 +483,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       usuario: e.usuario || "",
     }));
     renderEquipe();
+    carregarConvites();
     document.getElementById("campoCadastro").value = projeto ? (projeto.cadastro || "") : hojeIso();
     document.getElementById("campoInicio").value = projeto ? (projeto.inicio || "") : "";
     document.getElementById("campoFim").value = projeto ? (fimDe(projeto) || "") : "";
@@ -1272,6 +1327,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     e.preventDefault();
     sincronizarResponsavel(true);
   });
+  document.getElementById("btnConvidar").addEventListener("click", async () => {
+    if (!editandoId) {
+      alert("Salve o projeto antes de convidar.");
+      return;
+    }
+    const campo = document.getElementById("campoConvite");
+    const email = campo.value.trim();
+    if (!email) {
+      alert("Informe o e-mail.");
+      return;
+    }
+    try {
+      const convite = await window.GestaoDB.convidar(editandoId, email);
+      campo.value = "";
+      await carregarConvites();
+      if (convite && convite.token) await copiarTexto(linkConvite(convite.token));
+      alert(convite && convite.cadastrado
+        ? "Convite feito. O projeto já aparece no quadro dessa conta. O link também foi copiado."
+        : "Link copiado. Envie para a pessoa se cadastrar com esse e-mail.");
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+  document.getElementById("listaConvites").addEventListener("click", async (e) => {
+    const copiar = e.target.closest("[data-convite-copiar]");
+    const revogar = e.target.closest("[data-convite-revogar]");
+    if (copiar) {
+      await copiarTexto(linkConvite(copiar.dataset.conviteCopiar));
+      return;
+    }
+    if (!revogar) return;
+    try {
+      await window.GestaoDB.revogarConvite(revogar.dataset.conviteRevogar);
+      await carregarConvites();
+    } catch (err) {
+      alert(err.message);
+    }
+  });
   document.getElementById("btnAddEquipe").addEventListener("click", adicionarPessoa);
   document.getElementById("campoEquipe").addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
@@ -1772,7 +1865,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     publicarEtapas();
     preencherUsuarios();
     render();
-    const aberto = Number(new URLSearchParams(location.search).get("projeto"));
+    const conviteAberto = Number(sessionStorage.getItem("gestaoConviteProjeto"));
+    if (conviteAberto) sessionStorage.removeItem("gestaoConviteProjeto");
+    const aberto = conviteAberto || Number(new URLSearchParams(location.search).get("projeto"));
     if (aberto) {
       const alvo = projetos.find((p) => Number(p.id) === aberto);
       if (alvo) abrirModal(alvo);
