@@ -326,7 +326,7 @@ begin
     usuario text primary key,
     mensagem text not null
   ) on commit drop;
-  delete from pg_aviso_tmp;
+  delete from pg_aviso_tmp where usuario is not null;
 
   if v_id is null then
     select coalesce(max(ordem), -1) + 1 into v_ordem from public.projetos where status = v_status;
