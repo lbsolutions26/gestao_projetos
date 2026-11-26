@@ -777,31 +777,68 @@ begin
           u.created_at as cadastro,
           u.last_sign_in_at as ultimo_acesso,
           (select count(*) from public.projetos pr where pr.criado_por_id = u.id) as criou,
-          (
-            select count(distinct pr.id)
-            from public.projetos pr
-            left join public.perfis pf on pf.id = u.id
-            where pr.criado_por_id = u.id
-              or (
-                coalesce(pf.usuario, '') <> ''
-                and lower(coalesce(pr.responsavel_usuario, '')) = lower(pf.usuario)
-              )
-              or exists (
-                select 1 from public.projeto_equipe e
-                where e.projeto_id = pr.id
-                  and coalesce(e.usuario, '') <> ''
-                  and lower(e.usuario) = lower(pf.usuario)
-              )
-              or exists (
-                select 1 from public.projeto_convites c
-                where c.projeto_id = pr.id
-                  and c.aceito_em is not null
-                  and coalesce(u.email, '') <> ''
-                  and lower(c.email) = lower(u.email)
-              )
-          ) as participa
+          coalesce(part.qtd, 0) as participa,
+          coalesce(part.lista, '[]'::jsonb) as projetos
         from auth.users u
         left join public.perfis p on p.id = u.id
+        left join lateral (
+          select
+            count(*)::int as qtd,
+            jsonb_agg(
+              jsonb_build_object(
+                'id', pr.id,
+                'nome', pr.nome,
+                'status', pr.status,
+                'papel', coalesce((
+                  select string_agg(papel, ', ' order by ordem)
+                  from (
+                    select 1 as ordem, 'Criou' as papel where pr.criado_por_id = u.id
+                    union all
+                    select 2, 'Responsável'
+                    where coalesce(p.usuario, '') <> ''
+                      and lower(coalesce(pr.responsavel_usuario, '')) = lower(p.usuario)
+                    union all
+                    select 3, 'Equipe'
+                    where exists (
+                      select 1 from public.projeto_equipe e
+                      where e.projeto_id = pr.id
+                        and coalesce(e.usuario, '') <> ''
+                        and lower(e.usuario) = lower(p.usuario)
+                    )
+                    union all
+                    select 4, 'Convite'
+                    where exists (
+                      select 1 from public.projeto_convites c
+                      where c.projeto_id = pr.id
+                        and c.aceito_em is not null
+                        and coalesce(u.email, '') <> ''
+                        and lower(c.email) = lower(u.email)
+                    )
+                  ) papeis
+                ), '')
+              )
+              order by pr.nome
+            ) as lista
+          from public.projetos pr
+          where pr.criado_por_id = u.id
+            or (
+              coalesce(p.usuario, '') <> ''
+              and lower(coalesce(pr.responsavel_usuario, '')) = lower(p.usuario)
+            )
+            or exists (
+              select 1 from public.projeto_equipe e
+              where e.projeto_id = pr.id
+                and coalesce(e.usuario, '') <> ''
+                and lower(e.usuario) = lower(p.usuario)
+            )
+            or exists (
+              select 1 from public.projeto_convites c
+              where c.projeto_id = pr.id
+                and c.aceito_em is not null
+                and coalesce(u.email, '') <> ''
+                and lower(c.email) = lower(u.email)
+            )
+        ) part on true
       ) x
     ), '[]'::jsonb)
   ) into v_json;

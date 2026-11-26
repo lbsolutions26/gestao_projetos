@@ -151,6 +151,28 @@
     return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
   }
 
+  function rotuloStatus(status) {
+    const mapa = {
+      "A FAZER": "A fazer",
+      "EM ANDAMENTO": "Em andamento",
+      CONCLUIDO: "Concluído",
+      PAUSADO: "Pausado",
+      CANCELADO: "Cancelado",
+    };
+    return mapa[status] || status || "";
+  }
+
+  function htmlProjetos(lista) {
+    const itens = Array.isArray(lista) ? lista : [];
+    if (!itens.length) return `<p class="acao-vazia">Nenhum projeto neste site.</p>`;
+    return `<ul class="assin-projetos">${itens.map((pr) => `
+      <li>
+        <strong>${escapeHtml(pr.nome)}</strong>
+        <span class="assin-status">${escapeHtml(rotuloStatus(pr.status))}</span>
+        <span>${escapeHtml(pr.papel)}</span>
+      </li>`).join("")}</ul>`;
+  }
+
   function htmlAssinaturas(dados) {
     dados = dados || {};
     const cards = document.getElementById("assinCards");
@@ -181,13 +203,16 @@
         </thead>
         <tbody>
           ${pessoas.map((p) => `
-            <tr>
+            <tr class="assin-pessoa" aria-expanded="false">
               <td>${escapeHtml(p.nome)}</td>
               <td>${escapeHtml(p.email)}</td>
               <td>${fmtQuando(p.cadastro)}</td>
               <td>${p.ultimo_acesso ? fmtQuando(p.ultimo_acesso) : "Nunca entrou"}</td>
               <td>${Number(p.criou) || 0}</td>
               <td>${Number(p.participa) || 0}</td>
+            </tr>
+            <tr class="assin-detalhe" hidden>
+              <td colspan="6">${htmlProjetos(p.projetos)}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -210,6 +235,15 @@
     try { gestor = await window.GestaoDB.souGestor(); } catch (_) { gestor = false; }
     if (!gestor) return;
     botao.hidden = false;
+    document.getElementById("assinTabela").addEventListener("click", (ev) => {
+      const linha = ev.target.closest("tr.assin-pessoa");
+      if (!linha || !painel.contains(linha)) return;
+      const det = linha.nextElementSibling;
+      if (!det || !det.classList.contains("assin-detalhe")) return;
+      const aberto = det.hidden;
+      det.hidden = !aberto;
+      linha.setAttribute("aria-expanded", aberto ? "true" : "false");
+    });
     const abrir = async () => {
       painel.hidden = false;
       document.getElementById("assinTabela").innerHTML = `<p class="acao-vazia">Carregando...</p>`;

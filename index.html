@@ -229,6 +229,15 @@
     .assin-card strong { font-size: 28px; }
     .assin-tabela { width: 100%; border-collapse: collapse; background: #fff; }
     .assin-tabela th, .assin-tabela td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eceff1; }
+    .assin-tabela tr.assin-pessoa { cursor: pointer; }
+    .assin-tabela tr.assin-pessoa:hover { background: #f7f9fb; }
+    .assin-tabela tr.assin-pessoa td:first-child::before { content: "▸  "; color: #90a4ae; }
+    .assin-tabela tr.assin-pessoa[aria-expanded="true"] td:first-child::before { content: "▾  "; }
+    .assin-tabela tr.assin-detalhe td { background: #f7f9fb; padding: 4px 12px 12px 28px; }
+    .assin-tabela tr.assin-detalhe[hidden] { display: none !important; }
+    .assin-projetos { list-style: none; margin: 0; padding: 0; }
+    .assin-projetos li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; padding: 4px 0; }
+    .assin-status { font-size: 12px; font-weight: 700; color: #546e7a; }
     .tag { display: inline-block; margin: 0 6px 6px 0; padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 12px; }
     .tag-opcao { border: 1px solid #cfd8dc; background: #fff; color: #263238; border-radius: 999px; padding: 4px 10px; margin: 0 6px 6px 0; cursor: pointer; }
     .tag-opcao.on { color: #fff; border-color: transparent; }
@@ -516,7 +525,7 @@
       <h1>Gestão de assinaturas</h1>
       <button type="button" class="btn" id="btnFecharAssinaturas">Voltar ao quadro</button>
     </div>
-    <p class="hint">Só a sua conta vê estes números. A lista inclui as contas que já existiam neste mesmo login, mesmo as criadas antes deste site.</p>
+    <p class="hint">Só a sua conta vê estes números. Clique em uma pessoa para abrir os projetos dela. A lista inclui as contas que já existiam neste mesmo login.</p>
     <div class="assin-cards" id="assinCards"></div>
     <div id="assinTabela"></div>
   </section>
@@ -720,7 +729,7 @@
   <script src="config.js"></script>
   <script src="js/cronologia.js?v=20261126etapas"></script>
   <script src="js/db.js?v=20261126assinaturas"></script>
-  <script src="js/sessao.js?v=20261126assinaturas"></script>
+  <script src="js/sessao.js?v=20261126projetos"></script>
   <script src="js/kanban.js?v=20261126tags"></script>
 </body>
 </html>
