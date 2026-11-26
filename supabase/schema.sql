@@ -725,6 +725,93 @@ $$;
 revoke all on function public.revogar_convite(bigint) from public;
 grant execute on function public.revogar_convite(bigint) to authenticated;
 
+create table if not exists public.gestores (
+  id uuid primary key references auth.users (id) on delete cascade
+);
+
+alter table public.gestores enable row level security;
+revoke all on public.gestores from public, anon, authenticated;
+
+insert into public.gestores (id)
+select id from auth.users where lower(email) = 'rodrigo.lara@rede.ulbra.br'
+on conflict (id) do nothing;
+
+create or replace function public.sou_gestor()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.gestores where id = auth.uid());
+$$;
+
+revoke all on function public.sou_gestor() from public, anon;
+grant execute on function public.sou_gestor() to authenticated;
+
+create or replace function public.painel_assinaturas()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_json jsonb;
+begin
+  if auth.uid() is null or not exists (select 1 from public.gestores where id = auth.uid()) then
+    raise exception 'Sem permissão.';
+  end if;
+  select jsonb_build_object(
+    'contas', (select count(*) from auth.users),
+    'projetos', (select count(*) from public.projetos),
+    'acessos7', (select count(*) from auth.users where last_sign_in_at >= now() - interval '7 days'),
+    'convitesPendentes', (select count(*) from public.projeto_convites where aceito_em is null),
+    'pessoas', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.ultimo_acesso desc nulls last, x.cadastro desc)
+      from (
+        select
+          coalesce(p.nome, split_part(u.email, '@', 1)) as nome,
+          u.email,
+          coalesce(p.usuario, '') as usuario,
+          u.created_at as cadastro,
+          u.last_sign_in_at as ultimo_acesso,
+          (select count(*) from public.projetos pr where pr.criado_por_id = u.id) as criou,
+          (
+            select count(distinct pr.id)
+            from public.projetos pr
+            left join public.perfis pf on pf.id = u.id
+            where pr.criado_por_id = u.id
+              or (
+                coalesce(pf.usuario, '') <> ''
+                and lower(coalesce(pr.responsavel_usuario, '')) = lower(pf.usuario)
+              )
+              or exists (
+                select 1 from public.projeto_equipe e
+                where e.projeto_id = pr.id
+                  and coalesce(e.usuario, '') <> ''
+                  and lower(e.usuario) = lower(pf.usuario)
+              )
+              or exists (
+                select 1 from public.projeto_convites c
+                where c.projeto_id = pr.id
+                  and c.aceito_em is not null
+                  and coalesce(u.email, '') <> ''
+                  and lower(c.email) = lower(u.email)
+              )
+          ) as participa
+        from auth.users u
+        left join public.perfis p on p.id = u.id
+      ) x
+    ), '[]'::jsonb)
+  ) into v_json;
+  return v_json;
+end;
+$$;
+
+revoke all on function public.painel_assinaturas() from public, anon;
+grant execute on function public.painel_assinaturas() to authenticated;
+
 alter table public.perfis enable row level security;
 alter table public.projetos enable row level security;
 alter table public.projeto_acoes enable row level security;

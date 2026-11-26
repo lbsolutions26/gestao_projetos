@@ -144,6 +144,85 @@
     desenharAvisos();
   }
 
+  function fmtQuando(iso) {
+    if (!iso) return "Nunca entrou";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Nunca entrou";
+    return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  }
+
+  function htmlAssinaturas(dados) {
+    dados = dados || {};
+    const cards = document.getElementById("assinCards");
+    const tabela = document.getElementById("assinTabela");
+    const numeros = [
+      ["Contas", dados.contas || 0],
+      ["Projetos", dados.projetos || 0],
+      ["Acessos em 7 dias", dados.acessos7 || 0],
+      ["Convites pendentes", dados.convitesPendentes || 0],
+    ];
+    cards.innerHTML = numeros.map(([rotulo, valor]) => `<article class="assin-card"><span>${rotulo}</span><strong>${valor}</strong></article>`).join("");
+    const pessoas = Array.isArray(dados.pessoas) ? dados.pessoas : [];
+    if (!pessoas.length) {
+      tabela.innerHTML = `<p class="acao-vazia">Nenhuma conta cadastrada.</p>`;
+      return;
+    }
+    tabela.innerHTML = `
+      <table class="assin-tabela">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>E-mail</th>
+            <th>Cadastro</th>
+            <th>Último acesso</th>
+            <th>Criou</th>
+            <th>Participa</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pessoas.map((p) => `
+            <tr>
+              <td>${escapeHtml(p.nome)}</td>
+              <td>${escapeHtml(p.email)}</td>
+              <td>${fmtQuando(p.cadastro)}</td>
+              <td>${p.ultimo_acesso ? fmtQuando(p.ultimo_acesso) : "Nunca entrou"}</td>
+              <td>${Number(p.criou) || 0}</td>
+              <td>${Number(p.participa) || 0}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function iniciarAssinaturas() {
+    const botao = document.getElementById("btnAssinaturas");
+    const painel = document.getElementById("painelAssinaturas");
+    if (!botao || !painel) return;
+    let gestor = false;
+    try { gestor = await window.GestaoDB.souGestor(); } catch (_) { gestor = false; }
+    if (!gestor) return;
+    botao.hidden = false;
+    const abrir = async () => {
+      painel.hidden = false;
+      document.getElementById("assinTabela").innerHTML = `<p class="acao-vazia">Carregando...</p>`;
+      try {
+        htmlAssinaturas(await window.GestaoDB.painelAssinaturas());
+      } catch (err) {
+        document.getElementById("assinTabela").innerHTML = `<p class="acao-vazia">${escapeHtml(err.message)}</p>`;
+      }
+    };
+    botao.addEventListener("click", abrir);
+    document.getElementById("btnFecharAssinaturas").addEventListener("click", () => { painel.hidden = true; });
+  }
+
   async function preparar() {
     if (!cfg.url || !cfg.anonKey) {
       faltaChave();
@@ -188,6 +267,7 @@
     document.getElementById("telaLogin").hidden = true;
     document.getElementById("app").hidden = false;
     document.getElementById("topoNome").textContent = perfil.nome;
+    await iniciarAssinaturas();
     document.getElementById("btnSair").addEventListener("click", async () => {
       await sb.auth.signOut();
       location.reload();

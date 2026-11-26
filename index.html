@@ -48,11 +48,12 @@
     .topo strong { letter-spacing: 0.02em; }
     .topo-acoes { display: flex; align-items: center; gap: 10px; }
     .topo-acoes span { color: #cfd8dc; }
-    #btnSino, #btnSair {
+    #btnSino, #btnSair, #btnAssinaturas {
       border: 1px solid rgba(255,255,255,0.25); background: transparent; color: #fff;
       border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; position: relative;
     }
-    #btnSino:hover, #btnSair:hover { background: rgba(255,255,255,0.08); }
+    #btnSino:hover, #btnSair:hover, #btnAssinaturas:hover { background: rgba(255,255,255,0.08); }
+    #btnAssinaturas[hidden] { display: none !important; }
     #sinoConta {
       position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px;
       border-radius: 999px; background: #e53935; color: #fff; font-size: 0.7rem; line-height: 18px;
@@ -216,6 +217,18 @@
     .marca-projeto { display: flex; flex-wrap: wrap; gap: 8px 16px; }
     .marca-projeto label { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; font-weight: 600; }
     .marca-projeto input { width: 16px; height: 16px; padding: 0; }
+    #painelAssinaturas {
+      position: fixed; z-index: 40; top: 58px; left: 0; right: 0; bottom: 0;
+      overflow: auto; background: #f4f6f8; padding: 22px;
+    }
+    #painelAssinaturas[hidden] { display: none !important; }
+    .assin-topo { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .assin-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+    .assin-card { background: #fff; border: 1px solid #e6e6e6; border-radius: 12px; padding: 14px 16px; min-width: 150px; }
+    .assin-card span { display: block; color: #607d8b; font-size: 13px; }
+    .assin-card strong { font-size: 28px; }
+    .assin-tabela { width: 100%; border-collapse: collapse; background: #fff; }
+    .assin-tabela th, .assin-tabela td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eceff1; }
     .tag { display: inline-block; margin: 0 6px 6px 0; padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 12px; }
     .tag-opcao { border: 1px solid #cfd8dc; background: #fff; color: #263238; border-radius: 999px; padding: 4px 10px; margin: 0 6px 6px 0; cursor: pointer; }
     .tag-opcao.on { color: #fff; border-color: transparent; }
@@ -491,12 +504,22 @@
   <header class="topo">
     <strong>Gestão de projetos</strong>
     <div class="topo-acoes">
+      <button type="button" id="btnAssinaturas" hidden>Assinaturas</button>
       <button type="button" id="btnSino" aria-label="Avisos"><i class="fa-solid fa-bell"></i><span id="sinoConta" hidden>0</span></button>
       <span id="topoNome"></span>
       <button type="button" id="btnSair">Sair</button>
     </div>
     <div id="painelAvisos" hidden></div>
   </header>
+  <section id="painelAssinaturas" hidden>
+    <div class="assin-topo">
+      <h1>Gestão de assinaturas</h1>
+      <button type="button" class="btn" id="btnFecharAssinaturas">Voltar ao quadro</button>
+    </div>
+    <p class="hint">Só a sua conta vê estes números. A lista inclui as contas que já existiam neste mesmo login, mesmo as criadas antes deste site.</p>
+    <div class="assin-cards" id="assinCards"></div>
+    <div id="assinTabela"></div>
+  </section>
   <div class="main-content">
     <div class="container">
       <h1 class="no-print"><i class="fa-solid fa-table-columns"></i> Kanban de projetos</h1>
@@ -696,8 +719,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="js/cronologia.js?v=20261126etapas"></script>
-  <script src="js/db.js?v=20261126tags"></script>
-  <script src="js/sessao.js?v=20261126convite"></script>
+  <script src="js/db.js?v=20261126assinaturas"></script>
+  <script src="js/sessao.js?v=20261126assinaturas"></script>
   <script src="js/kanban.js?v=20261126tags"></script>
 </body>
 </html>

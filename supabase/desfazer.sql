@@ -32,6 +32,9 @@ drop table if exists public.projeto_acoes cascade;
 drop table if exists public.projetos cascade;
 drop table if exists public.perfis cascade;
 
+drop function if exists public.painel_assinaturas();
+drop function if exists public.sou_gestor();
+drop table if exists public.gestores;
 drop function if exists public.revogar_convite(bigint);
 drop function if exists public.aceitar_convites_pendentes();
 drop function if exists public.aceitar_convite(text);

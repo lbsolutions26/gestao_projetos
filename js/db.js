@@ -672,6 +672,17 @@
     return res.data || {};
   }
 
+  async function souGestor() {
+    const res = await sb.rpc("sou_gestor");
+    return !res.error && res.data === true;
+  }
+
+  async function painelAssinaturas() {
+    const res = await sb.rpc("painel_assinaturas");
+    exigir(res);
+    return res.data || {};
+  }
+
   async function aceitarPendentes() {
     const res = await sb.rpc("aceitar_convites_pendentes");
     if (res.error) return [];
@@ -715,5 +726,7 @@
     verConvite,
     aceitarConvite,
     aceitarPendentes,
+    souGestor,
+    painelAssinaturas,
   };
 })(window);
